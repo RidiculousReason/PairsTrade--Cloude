@@ -159,6 +159,33 @@ def run_analysis(
         print(f"  Loaded {len(x)} observations  "
               f"({config.TRADING_DAYS_PER_YEAR} obs ≈ 1 year)")
 
+        # ── Cointegration gate ─────────────────────────────────────────────────
+        # Run statistical tests FIRST on the full dataset.
+        # Only proceed to trading if the pair passes:
+        #   1. Both series are I(1)  (levels non-stationary, diffs stationary)
+        #   2. At least one cointegration test confirms a stable long-run relation
+        #      (EG 5% in either direction OR Johansen 5%)
+        print("  Running cointegration tests ...")
+        coint = full_cointegration_analysis(
+            x, y, pair_name=pair_name, name_x=name_x, name_y=name_y
+        )
+        if verbose:
+            print_cointegration_summary(coint)
+
+        if not coint.both_i1:
+            print(f"  SKIP: {pair_name} — series are not both I(1). "
+                  f"(levels stationary or diffs non-stationary)")
+            continue
+
+        coint_ok = coint.eg_cointegrated_5pct or coint.johansen.cointegrated_5pct
+        if not coint_ok:
+            print(f"  SKIP: {pair_name} — no cointegration detected "
+                  f"(EG={'Yes' if coint.eg_cointegrated_5pct else 'No'}, "
+                  f"Joh={'Yes' if coint.johansen.cointegrated_5pct else 'No'}).")
+            continue
+
+        print(f"  PASS: cointegration confirmed — proceeding to backtest.")
+
         # ── Trading strategy ────────────────────────────────────────────────────
         print("  Running trading strategy ...")
         strat = run_strategy(
@@ -174,14 +201,6 @@ def run_analysis(
         )
         if verbose:
             print_strategy_summary(strat)
-
-        # ── Cointegration analysis ─────────────────────────────────────────────
-        print("  Running cointegration tests ...")
-        coint = full_cointegration_analysis(
-            x, y, pair_name=pair_name, name_x=name_x, name_y=name_y
-        )
-        if verbose:
-            print_cointegration_summary(coint)
 
         results_all.append(strat)
         coint_all.append(coint)
