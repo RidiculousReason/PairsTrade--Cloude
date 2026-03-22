@@ -156,8 +156,15 @@ def run_analysis(
             print(f"  ERROR loading pair '{pair_name}': {e}")
             continue
 
-        print(f"  Loaded {len(x)} observations  "
-              f"({config.TRADING_DAYS_PER_YEAR} obs ≈ 1 year)")
+        # Gorter (2006): exactly 520 obs = 260 formation + 260 backtest.
+        # Truncate to the most recent 520 if we have more.
+        target = config.TRADING_DAYS_PER_YEAR * 2   # 520
+        if len(x) > target:
+            x = x[-target:]
+            y = y[-target:]
+        print(f"  Using {len(x)} observations  "
+              f"({config.TRADING_DAYS_PER_YEAR} formation + "
+              f"{config.TRADING_DAYS_PER_YEAR} backtest)")
 
         # ── Cointegration gate ─────────────────────────────────────────────────
         # Run statistical tests FIRST on the full dataset.
@@ -177,14 +184,16 @@ def run_analysis(
                   f"(levels stationary or diffs non-stationary)")
             continue
 
-        coint_ok = coint.eg_cointegrated_5pct or coint.johansen.cointegrated_5pct
-        if not coint_ok:
-            print(f"  SKIP: {pair_name} — no cointegration detected "
-                  f"(EG={'Yes' if coint.eg_cointegrated_5pct else 'No'}, "
-                  f"Joh={'Yes' if coint.johansen.cointegrated_5pct else 'No'}).")
+        eg_ok  = coint.eg_cointegrated_5pct
+        joh_ok = coint.johansen.cointegrated_5pct
+        if not (eg_ok and joh_ok):
+            print(f"  SKIP: {pair_name} — cointegration not confirmed by both tests.")
+            print(f"        EG 5%={'Yes' if eg_ok else 'No'}  "
+                  f"Johansen 5%={'Yes' if joh_ok else 'No'}  "
+                  f"(need both)")
             continue
 
-        print(f"  PASS: cointegration confirmed — proceeding to backtest.")
+        print(f"  PASS: both EG and Johansen confirm cointegration — proceeding to backtest.")
 
         # ── Trading strategy ────────────────────────────────────────────────────
         print("  Running trading strategy ...")
@@ -358,7 +367,7 @@ def parse_args():
     )
     # Date range
     parser.add_argument("--start", default=None,
-                        help="Start date YYYY-MM-DD (default: 4 years before --end).")
+                        help="Start date YYYY-MM-DD (default: 2 years before --end, giving ~520 obs).")
     parser.add_argument("--end",   default=None,
                         help="End date YYYY-MM-DD (default: today).")
     # Output
@@ -413,7 +422,7 @@ if __name__ == "__main__":
     # ── Date range (4-year default → ~1040 trading days) ─────────────────────
     end_date   = args.end or datetime.today().strftime("%Y-%m-%d")
     start_date = args.start or (
-        datetime.strptime(end_date, "%Y-%m-%d") - timedelta(days=int(4 * 365.25))
+        datetime.strptime(end_date, "%Y-%m-%d") - timedelta(days=int(2 * 365.25))
     ).strftime("%Y-%m-%d")
 
     # ── Header ────────────────────────────────────────────────────────────────

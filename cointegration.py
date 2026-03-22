@@ -139,27 +139,45 @@ def _ols(y: np.ndarray, X: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
 
 
 # ---------------------------------------------------------------------------
-# AR lag selection by AIC (Chapter 3)
+# AR lag selection by AIC + BIC + HIC (Chapter 3)
+# Final lag = round(mean(argmin_AIC, argmin_BIC, argmin_HIC))
 # ---------------------------------------------------------------------------
 
-def _ar_aic(z: np.ndarray, p: int) -> float:
+def _ar_criteria(z: np.ndarray, p: int) -> tuple:
+    """Return (AIC, BIC, HIC) for AR(p) fit on z."""
     T = len(z)
     if p == 0:
         sigma2 = np.var(z)
+        n_obs  = T
     else:
-        lags = np.column_stack([z[p - i - 1: T - i - 1] for i in range(p)])
-        _, e = _ols(z[p:], lags)
+        lags   = np.column_stack([z[p - i - 1: T - i - 1] for i in range(p)])
+        _, e   = _ols(z[p:], lags)
         sigma2 = np.mean(e ** 2)
+        n_obs  = T - p
     if sigma2 <= 0:
-        return np.inf
-    n_obs = T - p
+        return np.inf, np.inf, np.inf
     log_lik = -n_obs / 2 * (np.log(2 * np.pi) + np.log(sigma2) + 1)
-    return -2 * log_lik + 2 * (p + 1)
+    k   = p + 1   # number of parameters (AR coefficients + variance)
+    aic = -2 * log_lik + 2 * k
+    bic = -2 * log_lik + k * np.log(n_obs)
+    hic = -2 * log_lik + 2 * k * np.log(np.log(n_obs)) if n_obs > 2 else np.inf
+    return aic, bic, hic
 
 
 def _select_ar_lags(z: np.ndarray, max_lags: int) -> int:
-    aic_vals = [_ar_aic(z, p) for p in range(max_lags + 1)]
-    return int(np.argmin(aic_vals))
+    """
+    Select AR lag order as round(mean(k_AIC, k_BIC, k_HIC)).
+    Each criterion picks its own argmin; the three are averaged and rounded.
+    This is more conservative than AIC alone and matches the GitHub reference.
+    """
+    criteria = [_ar_criteria(z, p) for p in range(max_lags + 1)]
+    aic_vals = [c[0] for c in criteria]
+    bic_vals = [c[1] for c in criteria]
+    hic_vals = [c[2] for c in criteria]
+    k_aic = int(np.argmin(aic_vals))
+    k_bic = int(np.argmin(bic_vals))
+    k_hic = int(np.argmin(hic_vals))
+    return max(0, int(round(np.mean([k_aic, k_bic, k_hic]))))
 
 
 # ---------------------------------------------------------------------------
