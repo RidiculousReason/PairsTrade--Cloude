@@ -167,14 +167,14 @@ def run_analysis(
               f"{config.TRADING_DAYS_PER_YEAR} backtest)")
 
         # ── Cointegration gate ─────────────────────────────────────────────────
-        # Run statistical tests FIRST on the full dataset.
-        # Only proceed to trading if the pair passes:
-        #   1. Both series are I(1)  (levels non-stationary, diffs stationary)
-        #   2. At least one cointegration test confirms a stable long-run relation
-        #      (EG 5% in either direction OR Johansen 5%)
-        print("  Running cointegration tests ...")
+        # Tests run on FORMATION HALF ONLY (first 260 obs) to avoid look-ahead.
+        # Gorter Chapter 7 tests on full 520 obs, but that leaks backtest data
+        # into the trading decision. We use only x_form/y_form here.
+        T_half = len(x) // 2
+        x_form, y_form = x[:T_half], y[:T_half]
+        print("  Running cointegration tests (formation half only) ...")
         coint = full_cointegration_analysis(
-            x, y, pair_name=pair_name, name_x=name_x, name_y=name_y
+            x_form, y_form, pair_name=pair_name, name_x=name_x, name_y=name_y
         )
         if verbose:
             print_cointegration_summary(coint)
