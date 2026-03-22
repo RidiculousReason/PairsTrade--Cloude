@@ -8,12 +8,16 @@ Implemented from scratch (no statsmodels):
   2. Augmented Dickey-Fuller (ADF) test – Cases 1, 2, 3
   3. Engle-Granger two-step cointegration test (both directions)
   4. Johansen cointegration test (trace and max-eigenvalue)
-  5. Information criteria: AIC for AR / VAR lag selection
+  5. Information criteria: AIC + BIC + HIC for AR / VAR lag selection
 
-Critical value sources (ALL from Gorter 2006):
-  - ADF:  Table 5.x, Case 2, T=520: {1%: -3.44, 5%: -2.87, 10%: -2.57}
-  - EG:   Chapter 7 p.139 – same distribution as DF Case 2 for T=520
-  - Johansen: Tables 4.1 / 4.2, Case 1 (no const, no trend), T=400
+Critical value sources:
+  - ADF/EG: Case 2, T=260 (formation half only — tests do NOT see backtest data).
+             MacKinnon (1994) finite-sample values for T=250.
+  - Johansen: Tables 4.1 / 4.2 of Gorter (2006), Case 1, T=400
+             (asymptotic; conservative for T=260 but standard in the literature).
+
+NOTE: Gorter (2006) runs tests on full T=520. We run on T=260 (formation half)
+to avoid look-ahead bias. This requires slightly adjusted critical values.
 """
 
 import numpy as np
@@ -26,23 +30,21 @@ import config
 # Critical value tables  (all from Gorter 2006)
 # ---------------------------------------------------------------------------
 
-# ADF critical values, Case 2 (with constant, no trend), T=520
-# Source: Chapter 5 of Gorter (2006)
+# ADF critical values, Case 2 (with constant, no trend)
+# T=260 (formation half): MacKinnon (1994) finite-sample for T=250.
+# Slightly more negative than T=520 values — correct conservative adjustment.
 ADF_CRITICAL_VALUES = {
-    "case1": {"1%": -2.5658, "5%": -1.9393, "10%": -1.6156},  # no const, no trend
-    "case2": {"1%": -3.44,   "5%": -2.87,   "10%": -2.57},    # with const, T=520
-    "case3": {"1%": -3.9638, "5%": -3.4126, "10%": -3.1279},  # const + trend
+    "case1": {"1%": -2.5899, "5%": -1.9439, "10%": -1.6177},  # no const, no trend
+    "case2": {"1%": -3.46,   "5%": -2.88,   "10%": -2.57},    # with const, T=260
+    "case3": {"1%": -3.99,   "5%": -3.43,   "10%": -3.13},    # const + trend
 }
 
-# Engle-Granger critical values (residual ADF, Case 2)
-# Source: Chapter 7 p.139:
-#   "We have found no reason to assume the Engle-Granger test statistic has a
-#    different distribution than the Dickey-Fuller case 2 test statistic, so
-#    we will use the same critical values"
-# => identical to ADF_CRITICAL_VALUES["case2"] for T=520
+# Engle-Granger critical values (residual ADF, Case 2, T=260)
+# Gorter Chapter 7: same distribution as DF Case 2.
+# We use T=260 finite-sample values to match our formation-half sample size.
 EG_CRITICAL_VALUES = {
-    "1%":  -3.44,
-    "5%":  -2.87,
+    "1%":  -3.46,
+    "5%":  -2.88,
     "10%": -2.57,
 }
 
@@ -419,12 +421,13 @@ def full_cointegration_analysis(x: np.ndarray,
                                 name_x: str = "X",
                                 name_y: str = "Y") -> CointegrationSummary:
     """
-    Complete cointegration analysis (Chapter 7 procedure):
-      1. ADF test on each series (must be I(1))
+    Complete cointegration analysis:
+      1. ADF test on each series (levels + first differences) — check I(1)
       2. Engle-Granger in BOTH directions (test is not symmetric)
-      3. Johansen (three-test verdict)
+      3. Johansen (three-test verdict, diagnostic)
 
-    Tests run on the FULL dataset (not just formation half).
+    Called with formation-half data only (x_form, y_form) from main.py
+    to avoid look-ahead bias. Critical values calibrated for T=260.
     """
     # Step 1a: ADF on levels (should NOT reject — series should be I(1))
     adf_x = adf_test(x, series_name=name_x, case="case2")

@@ -186,14 +186,33 @@ def run_analysis(
 
         eg_ok  = coint.eg_cointegrated_5pct
         joh_ok = coint.johansen.cointegrated_5pct
-        if not (eg_ok and joh_ok):
-            print(f"  SKIP: {pair_name} — cointegration not confirmed by both tests.")
-            print(f"        EG 5%={'Yes' if eg_ok else 'No'}  "
-                  f"Johansen 5%={'Yes' if joh_ok else 'No'}  "
-                  f"(need both)")
+
+        # Gate: Engle-Granger is the primary filter (bidirectional, no-intercept OLS).
+        # Johansen is additional diagnostic — logged but does NOT block trading.
+        if not eg_ok:
+            print(f"  SKIP: {pair_name} — EG test did not confirm cointegration at 5%.")
+            print(f"        Johansen 5%={'Yes' if joh_ok else 'No'}  (diagnostic only)")
             continue
 
-        print(f"  PASS: both EG and Johansen confirm cointegration — proceeding to backtest.")
+        joh_note = "✓ confirmed" if joh_ok else "✗ not confirmed (diagnostic only)"
+        print(f"  PASS: EG cointegration confirmed. Johansen: {joh_note}")
+
+        # ── Extract α̂ from the winning EG direction ───────────────────────────
+        # EG tests both Y~X and X~Y; the winning direction is the one with
+        # the smaller ADF p-value on residuals (most stationary spread).
+        # If X~Y won, its coefficient β is for the regression x = β·y + ε,
+        # so the hedge ratio for our spread  s = y - α·x  is α = 1/β.
+        eg_xy  = coint.engle_granger        # Y ~ X,  coef = α̂
+        eg_yx  = coint.engle_granger_yx     # X ~ Y,  coef = β̂  → α = 1/β̂
+        if eg_xy.adf_result.test_stat <= eg_yx.adf_result.test_stat:
+            # Y~X direction has more negative (better) ADF stat → use directly
+            eg_alpha = eg_xy.alpha
+            eg_dir   = f"Y~X  (α̂={eg_alpha:.6f})"
+        else:
+            # X~Y direction won → invert to get α for s = y - α·x
+            eg_alpha = 1.0 / eg_yx.alpha if eg_yx.alpha != 0 else eg_xy.alpha
+            eg_dir   = f"X~Y  (β̂={eg_yx.alpha:.6f} → α̂=1/β̂={eg_alpha:.6f})"
+        print(f"  Winning EG direction: {eg_dir}")
 
         # ── Trading strategy ────────────────────────────────────────────────────
         print("  Running trading strategy ...")
@@ -207,6 +226,7 @@ def run_analysis(
             costs_bps=costs_bps,
             bid_ask_spread_pct=bid_ask_spread_pct,
             slippage_bps=slippage_bps,
+            eg_alpha_hat=eg_alpha,
         )
         if verbose:
             print_strategy_summary(strat)
@@ -386,7 +406,7 @@ def parse_args():
     parser.add_argument("--slippage_bps", type=float, default=0.0,
                         help="Market-impact slippage in basis points (default: 0).")
     # Risk controls
-    parser.add_argument("--max_holding_days", type=int, default=60,
+    parser.add_argument("--max_holding_days", type=int, default=190,
                         help="Force-close position after this many days (default: 60).")
     parser.add_argument("--stop_mult", type=float, default=3.0,
                         help="Stop-loss multiplier: close if |spread| > mult×Γ "

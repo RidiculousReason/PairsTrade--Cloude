@@ -10,16 +10,20 @@ Synthetic pairs use the Section 6.1 model:
 """
 
 # ─── Kappa table (Table 2.5) ──────────────────────────────────────────────────
+# Granular version matching GitHub reference implementation.
 # (hi, lo, kappa_pct) — number of formation-period trades => κ percentage
 KAPPA_TABLE = [
-    (float('inf'), 16, 0),   # > 15 trades  → κ = 0%
-    (15, 10, 1),              # 10–15 trades → κ = 1%
-    (9,   7, 2),              # 7–9  trades  → κ = 2%
-    (6,   5, 4),              # 5–6  trades  → κ = 4%
-    (4,   3, 6),              # 3–4  trades  → κ = 6%
-    (2,   2, 8),              # 2    trades  → κ = 8%
-    (1,   1, 10),             # 1    trade   → κ = 10%
-    (0,   0, 10),             # 0    trades  → κ = 10%
+    (float('inf'), 16,  0),   # > 15 trades  → κ = 0%
+    (15,           10,  1),   # 10–15 trades → κ = 1%
+    (9,             8,  2),   # 8–9  trades  → κ = 2%
+    (7,             7,  3),   # 7    trades  → κ = 3%
+    (6,             6,  4),   # 6    trades  → κ = 4%
+    (5,             5,  5),   # 5    trades  → κ = 5%
+    (4,             4,  6),   # 4    trades  → κ = 6%
+    (3,             3,  7),   # 3    trades  → κ = 7%
+    (2,             2,  8),   # 2    trades  → κ = 8%
+    (1,             1,  9),   # 1    trade   → κ = 9%
+    (0,             0, 10),   # 0    trades  → κ = 10%
 ]
 
 # ─── Gamma search grid (Section 2.4) ─────────────────────────────────────────

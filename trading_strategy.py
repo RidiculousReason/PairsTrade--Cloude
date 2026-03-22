@@ -177,6 +177,7 @@ def _simulate_strategy_ii(spread: np.ndarray, gamma: float) -> Tuple[int, float]
 def formation_phase(
     x_half: np.ndarray,
     y_half: np.ndarray,
+    alpha_hat_override: Optional[float] = None,
 ) -> Tuple[float, float, float, List[Dict], float]:
     """
     Estimate α̂, Γ, κ from the formation (first-half) data.
@@ -185,9 +186,16 @@ def formation_phase(
     Γ  chosen by max min-profit across grid {5%,…,50%} of max|spread|
     κ  from Table 2.5 via number of formation-period trades at chosen Γ
 
+    If alpha_hat_override is provided (from EG winning direction in main.py),
+    it is used directly instead of re-estimating via OLS. This ensures the
+    trading hedge ratio is the same coefficient that passed the cointegration test.
+
     Returns (alpha_hat, gamma, kappa, search_results, m)
     """
-    alpha_hat = float(np.dot(x_half, y_half) / np.dot(x_half, x_half))
+    if alpha_hat_override is not None:
+        alpha_hat = alpha_hat_override
+    else:
+        alpha_hat = float(np.dot(x_half, y_half) / np.dot(x_half, x_half))
     spread    = y_half - alpha_hat * x_half
     m         = float(np.max(np.abs(spread)))
 
@@ -265,6 +273,7 @@ def backtest_phase(
 
     trades:        List[Trade] = []
     position      = 0
+    cooling_off   = False   # True after forced close until spread re-enters band
     t_entry       = 0
     s_entry       = 0.0
     y_entry       = 0.0
@@ -333,6 +342,14 @@ def backtest_phase(
         s = spread_adj[t]
 
         if position == 0:
+            # After a forced close (stop-loss or time-stop), require the
+            # spread to return inside [-Γ, +Γ] before allowing re-entry.
+            # This prevents immediately re-entering into a broken spread.
+            if cooling_off:
+                if abs(s) < gamma:
+                    cooling_off = False   # spread back inside band — ready
+                continue                  # no entry while cooling off
+
             if s >= gamma:
                 position    = -1
                 t_entry     = t
@@ -361,7 +378,8 @@ def backtest_phase(
             trades.append(_close_trade(t, forced))
 
             if reversal_hit and not forced:
-                # Immediately reverse
+                # Immediately reverse — clean signal, no cooldown needed
+                cooling_off = False
                 position    = -position
                 t_entry     = t
                 s_entry     = s
@@ -369,7 +387,9 @@ def backtest_phase(
                 x_entry     = x_back[t]
                 ratio_entry = r_tilde[t]
             else:
-                position = 0
+                # Stop-loss or time-stop: go flat and wait for spread to normalise
+                cooling_off = True
+                position    = 0
 
     # ── Force-close open position at end of period ────────────────────────────
     if position != 0:
@@ -454,12 +474,17 @@ def run_strategy(
     costs_bps:          float = 0.0,
     bid_ask_spread_pct: float = 0.0,
     slippage_bps:       float = 0.0,
+    eg_alpha_hat:       Optional[float] = None,
 ) -> StrategyResult:
     """
     Run the full pairs trading strategy.
 
     Formation half: estimate α̂, Γ, κ.
     Backtest half:  execute Strategy II with risk controls and costs.
+
+    eg_alpha_hat: if provided, use this coefficient directly as the hedge ratio
+    instead of re-estimating via OLS. Should come from the winning EG direction
+    in main.py to ensure the test and trading use the same α̂.
     """
     T      = len(x)
     T_half = T // 2
@@ -467,7 +492,9 @@ def run_strategy(
     x_form, y_form = x[:T_half], y[:T_half]
     x_back, y_back = x[T_half:], y[T_half:]
 
-    alpha_hat, gamma, kappa, gamma_search, m = formation_phase(x_form, y_form)
+    alpha_hat, gamma, kappa, gamma_search, m = formation_phase(
+        x_form, y_form, alpha_hat_override=eg_alpha_hat
+    )
     spread_form = y_form - alpha_hat * x_form
 
     r_tilde, r_actual, spread_back, trades = backtest_phase(

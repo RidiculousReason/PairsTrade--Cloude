@@ -102,7 +102,7 @@ def plot_formation_spread(res: StrategyResult, ax: Optional[plt.Axes] = None,
     t = np.arange(T_half)
     s = res.spread_formation
 
-    ax.plot(t, s, color=COLOUR_SPRD, lw=1, label=r"$s_t = y_t - \bar{r}x_t$")
+    ax.plot(t, s, color=COLOUR_SPRD, lw=1, label=r"$s_t = y_t - \hat{\alpha}x_t$")
     ax.axhline(0, color="k", lw=0.8, ls="-")
     ax.axhline(res.gamma,  color=COLOUR_GAMMA, lw=1.2, ls="--",
                label=f"Γ = {res.gamma:.3f}")
@@ -116,7 +116,7 @@ def plot_formation_spread(res: StrategyResult, ax: Optional[plt.Axes] = None,
     ax.set_xlabel("t (formation period)")
     ax.set_ylabel("Spread")
     ax.set_title(f"{res.pair_name} – Formation Spread"
-                 f"  [r̄={res.alpha_hat:.4f}, Γ={res.gamma:.4f}, κ={res.kappa*100:.0f}%]")
+                 f"  [α̂={res.alpha_hat:.4f}, Γ={res.gamma:.4f}, κ={res.kappa*100:.0f}%]")
     ax.legend()
     ax.grid(True)
 
